@@ -48,6 +48,10 @@ well as what companies big and small will end up doing with it.
 SQLTable still has a long way to go and I plan to make a way to use `AsyncAttrs` with it.
 
 
+# NOTES
+- This Library is going to get changed a lot until then this is still all in testing phase
+- I am changing how the api works a ton thanks to inputs/comments from [the SQLAlchemy Devs](https://github.com/sqlalchemy/sqlalchemy/discussions/12278#discussioncomment-11972815)
+
 ## TODOs
 - [ ] Pypi Release
 - [ ] Youtube Presentation (Maybe if I am up to it mentally)
