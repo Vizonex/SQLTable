@@ -24,6 +24,53 @@ well as what companies big and small will end up doing with it.
 
 SQLTable still has a long way to go and I plan to make a way to use `AsyncAttrs` with it.
 
+## Examples
+What if we wanted to write a proxy service? SQLTable Adapts many aspects from SQLAlchemy, SQLModel and msgspec 
+and binds them all together
+```python
+from sqltable import SQLTable
+from sqltable.orm import Mapped, mapped_column
+from python_socks import ProxyType
+
+
+class ProxyTable(SQLTable, table=True):    
+    host:Mapped[str]
+    port:Mapped[int]
+    type:Mapped[ProxyType] = ProxyType.HTTP
+    id:Mapped[int] = mapped_column(primary_key=True, default=None)
+
+
+```
+
+The personality of the code from SQLModel Remains the same but Mapped API is used instead as directed by the SQLAlchemy Dev's 
+recommendations. Json Enocders are built in but you could also add in the `SQLTableDecoderMixin` If you plan to webscrape 
+an ajax api of some sort in your project. Know that SQLTable's Json decoder still doesn't know how to handle `Mapped` Types Yet
+Hopefully msgspec will fix that soon
+
+```python
+from sqltable import SQLTable, SQLTableDecoderMixin
+from sqltable.orm import Mapped, mapped_column
+from python_socks import ProxyType
+
+
+class ProxyTable(SQLTable, SQLTableDecoderMixin, table=True):    
+    host:Mapped[str]
+    port:Mapped[int]
+    type:Mapped[ProxyType] = ProxyType.HTTP
+    id:Mapped[int] = mapped_column(primary_key=True, default=None)
+
+
+proxy = ProxyTable("127.0.0.1", 9150, ProxyType.SOCKS5)
+# Json Response is b'{"host":"127.0.0.1","port":9150,"type":2,"id":null}'
+print(proxy.encode())
+
+# Know that the decoder is not mature yet and may require some code-changes to msgspec to fix it.
+# msgspec.ValidationError: Expected `Mapped`, got `str` - at `$.host`
+# Validation still needs improvement but a few changes to msgspec._core.c should fix it soon...
+print(ProxyTable.decode(b'{"host":"127.0.0.1","port":9150,"type":2,"id":null}'))
+```
+ 
+
 
 
 
