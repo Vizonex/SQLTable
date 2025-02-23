@@ -70,7 +70,7 @@ class SQLTableDecoderMixin:
         :param kw: Other custom external keywords to use in your own abstract base...
         """
         super().__init_subclass__(**kw)
-        cls.__init_decoder__(cls, dec_strict, dec_hook, dec_float_hook)
+        cls.__init_decoder__(dec_strict, dec_hook, dec_float_hook, **kw)
 
     @classmethod
     def decode(cls, buf: Union[Buffer, str]) -> Self:
