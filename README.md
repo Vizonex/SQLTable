@@ -44,8 +44,7 @@ class ProxyTable(SQLTable, table=True):
 
 The personality of the code from SQLModel Remains the same but Mapped API is used instead as directed by the SQLAlchemy Dev's 
 recommendations. Json Enocders are built in but you could also add in the `SQLTableDecoderMixin` If you plan to webscrape 
-an ajax api of some sort in your project. Know that SQLTable's Json decoder still doesn't know how to handle `Mapped` Types Yet
-Hopefully msgspec will fix that soon
+an ajax api of some sort in your project.
 
 ```python
 from sqltable import SQLTable, SQLTableDecoderMixin
@@ -63,10 +62,6 @@ class ProxyTable(SQLTable, SQLTableDecoderMixin, table=True):
 proxy = ProxyTable("127.0.0.1", 9150, ProxyType.SOCKS5)
 # Json Response is b'{"host":"127.0.0.1","port":9150,"type":2,"id":null}'
 print(proxy.encode())
-
-# Know that the decoder is not mature yet and may require some code-changes to msgspec to fix it.
-# msgspec.ValidationError: Expected `Mapped`, got `str` - at `$.host`
-# Validation still needs improvement but a few changes to msgspec._core.c should fix it soon...
 print(ProxyTable.decode(b'{"host":"127.0.0.1","port":9150,"type":2,"id":null}'))
 ```
  
