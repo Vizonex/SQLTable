@@ -12,20 +12,26 @@ from typing import (
     Union,
     overload,
     runtime_checkable,
+    Annotated
 )
 
 from msgspec.json import Decoder as JsonDecoder
 from msgspec.json import Encoder as JsonEncoder
 from sqlalchemy.orm import (
     DeclarativeBaseNoMeta,
-    Mapped,
+    Mapped as _Mapped,
     MappedAsDataclass,
     Mapper,
     declared_attr,
 )
+from sqlalchemy.orm.instrumentation import opt_manager_of_class
+from sqlalchemy.orm.state import InstanceState
 from sqlalchemy.sql import FromClause
 from sqlalchemy.sql.base import _NoArg
 from typing_extensions import Buffer, Self
+
+
+
 
 # Some things were adopted/retained from SQLModel which include
 # - __init_subclass__ table keyword to enable or disable an abstract able
@@ -33,6 +39,9 @@ from typing_extensions import Buffer, Self
 
 # Some things were adopted from Msgspec
 # - added JsonEncoder/JsonDecoders to SQLTable for Right-Away serlization
+
+
+
 
 
 class SQLTableDecoderMixin:
@@ -52,6 +61,9 @@ class SQLTableDecoderMixin:
     ):
         """Initalizes the Sqltable decoder class"""
 
+        # Until Msgspec gets around to fixing decoding we have to trick it into thinking this is our reql variable
+    
+
         cls.__sqltable_decoder__ = JsonDecoder(
             type=cls, strict=dec_strict, dec_hook=dec_hook, float_hook=dec_float_hook
         )
@@ -70,14 +82,28 @@ class SQLTableDecoderMixin:
         :param kw: Other custom external keywords to use in your own abstract base...
         """
         super().__init_subclass__(**kw)
+             
+     
         cls.__init_decoder__(dec_strict, dec_hook, dec_float_hook, **kw)
 
     @classmethod
     def decode(cls, buf: Union[Buffer, str]) -> Self:
+        # setup _sa_instance_state ahead of time so that
+        # unpickle events can access the object normally.
+        if not hasattr(cls, "_sa_instance_state"):
+            manager = opt_manager_of_class(cls)
+            manager.setup_instance(cls, InstanceState(cls, manager))
+
         return cls.__sqltable_decoder__.decode(buf)
 
     @classmethod
     def decode_lines(cls, buf: Union[Buffer, str]) -> List[Self]:
+         # setup _sa_instance_state ahead of time so that
+        # unpickle events can access the object normally.
+        if not hasattr(cls, "_sa_instance_state"):
+            manager = opt_manager_of_class(cls)
+            manager.setup_instance(cls, InstanceState(cls, manager))
+
         return cls.__sqltable_decoder__.decode_lines(buf)
 
 
@@ -106,6 +132,7 @@ class SQLTable(DeclarativeBaseNoMeta, MappedAsDataclass):
         __dataclass_fields__: ClassVar[dict[str, Any]]
         """The Dataclass fields that are in the `SQLTable`"""
 
+        
     __abstract__ = True
 
     @declared_attr.directive
@@ -187,10 +214,12 @@ class SQLTable(DeclarativeBaseNoMeta, MappedAsDataclass):
         if kw.pop("table", False):
             # Enable Table Creation
             cls.__abstract__ = False
-
+        
         super().__init_subclass__(**kw)
-
+        
         cls.__init_encoder__(cls, **kw)
+       
 
+        
         if hasattr(cls, "__post_subclass__"):
             cls.__post_subclass__(cls, **kw)
