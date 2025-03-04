@@ -19,10 +19,8 @@ when you could only do it once with SQLTable?
 There still maybe cases where you might need SQLModel still so I will see about thinking of ways you could use 
 both of them at the same time.
 
-I hope SQLTable will be the future of databases and I can't wait to see what you, other people as 
-well as what companies big and small will end up doing with it. 
-
-SQLTable still has a long way to go and I plan to make a way to use `AsyncAttrs` with it.
+I hope SQLTable will be the future of databases and I can't wait to see what you & other people will end up 
+doing with it. 
 
 ## Examples
 What if we wanted to write a proxy service? SQLTable Adapts many aspects from SQLAlchemy, SQLModel and msgspec 
@@ -52,7 +50,7 @@ from sqltable.orm import Mapped, mapped_column
 from python_socks import ProxyType
 
 
-class ProxyTable(SQLTable, SQLTableDecoderMixin, table=True):    
+class ProxyTable(SQLTableDecoderMixin, SQLTable, table=True):    
     host:Mapped[str]
     port:Mapped[int]
     type:Mapped[ProxyType] = ProxyType.HTTP
