@@ -14,7 +14,7 @@ A Library Inspired by SQLModel that merges Msgspec and SQLAlchemy together.
   Itself rather than needing a third party Session subclass to use which make tools like `aiohttp_sqlalchemy`
   desirable again.
 - __SQLTable__ comes with an `AsyncSQLTable` Class that uses `AsyncAttrs`
-- Json enocder is built-in to __SQLTable__ itself meaning that if you need a quick an dirty method for writing an HTTP Server API Response 
+- Json enocder is built-in to __SQLTable__ itself for when you need a quick and dirty method for writing an HTTP Server API Response 
 - Why write a class twice with msgspec.Struct and Sqlalchemy's DeclarativeBase when you only need to do it once with SQLTable? 
 
 As a fan of __SQLModel__ I was fond of the way it worked over just sqlalchemy but as 
