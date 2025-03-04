@@ -12,18 +12,23 @@ from typing import (
     Union,
     overload,
     runtime_checkable,
-    Annotated
+    get_args,
+    Dict
 )
 
 from msgspec.json import Decoder as JsonDecoder
 from msgspec.json import Encoder as JsonEncoder
 from sqlalchemy.orm import (
     DeclarativeBaseNoMeta,
-    Mapped as _Mapped,
+    Mapped,
     MappedAsDataclass,
     Mapper,
     declared_attr,
+    configure_mappers
 )
+
+from sqlalchemy import Column, Table, PrimaryKeyConstraint
+from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm.instrumentation import opt_manager_of_class
 from sqlalchemy.orm.state import InstanceState
 from sqlalchemy.sql import FromClause
@@ -41,15 +46,32 @@ from typing_extensions import Buffer, Self
 # - added JsonEncoder/JsonDecoders to SQLTable for Right-Away serlization
 
 
-
-
-
 class SQLTableDecoderMixin:
     """Special Json Decoder for SQLTable types"""
 
     if TYPE_CHECKING:
         __sqltable_decoder__: ClassVar[JsonDecoder[Self]]
         """Decodes Json Data into SQLTable Objects"""
+    
+    @classmethod
+    def remove_mapping_annotations(cls):
+        """Temporarly alters annotations so msgspec can understand 
+        how to decode variables that are associated to `Mapped`"""
+        __previous_annotations__ = cls.__annotations__.copy()
+        
+        for k, v in __previous_annotations__.items():
+            # using type(v) would just give me _GenericAlias, this bypasses that...
+            if str(v).startswith("sqlalchemy.orm.base.Mapped"):
+                # Unwrap SQLAlchemy Mapped varaibles temporarly
+                # get_args comes from typing...
+                cls.__annotations__[k] = get_args(v)[0]
+        
+        return __previous_annotations__
+    
+    @classmethod
+    def re_fix_annotations(cls, old_annotations):
+        """Reverts back to Mapped[] annotations for objects defined with it."""
+        cls.__annotations__ = old_annotations
 
     @classmethod
     def __init_decoder__(
@@ -61,12 +83,22 @@ class SQLTableDecoderMixin:
     ):
         """Initalizes the Sqltable decoder class"""
 
-        # Until Msgspec gets around to fixing decoding we have to trick it into thinking this is our reql variable
-    
-
+        # Until Msgspec gets around to fixing decoding we have to trick 
+        # it into thinking the items inside Mapped is our real variables we want to decode
+        old_annotations = cls.remove_mapping_annotations()
         cls.__sqltable_decoder__ = JsonDecoder(
             type=cls, strict=dec_strict, dec_hook=dec_hook, float_hook=dec_float_hook
-        )
+        ) 
+        # We're done playing trickery with msgspec so revert after were done building our decoder.
+        cls.re_fix_annotations(old_annotations)
+
+        # We need to make sure the decoder 
+        # knows what it's setting up...
+        
+        # TODO: make configure_mappers faster by setting 
+        # it up to do only one registry at a time? 
+        configure_mappers()
+        return None
 
     def __init_subclass__(
         cls,
@@ -82,17 +114,17 @@ class SQLTableDecoderMixin:
         :param kw: Other custom external keywords to use in your own abstract base...
         """
         super().__init_subclass__(**kw)
-             
-     
         cls.__init_decoder__(dec_strict, dec_hook, dec_float_hook, **kw)
 
     @classmethod
     def decode(cls, buf: Union[Buffer, str]) -> Self:
         # setup _sa_instance_state ahead of time so that
         # unpickle events can access the object normally.
-        if not hasattr(cls, "_sa_instance_state"):
-            manager = opt_manager_of_class(cls)
-            manager.setup_instance(cls, InstanceState(cls, manager))
+        # if not hasattr(cls, "_sa_instance_state"):
+        manager = opt_manager_of_class(cls)
+        manager.setup_instance(cls, InstanceState(cls, manager))
+        print(cls.__dict__)
+        print(cls.host.__set__)
 
         return cls.__sqltable_decoder__.decode(buf)
 
@@ -100,10 +132,9 @@ class SQLTableDecoderMixin:
     def decode_lines(cls, buf: Union[Buffer, str]) -> List[Self]:
          # setup _sa_instance_state ahead of time so that
         # unpickle events can access the object normally.
-        if not hasattr(cls, "_sa_instance_state"):
-            manager = opt_manager_of_class(cls)
-            manager.setup_instance(cls, InstanceState(cls, manager))
-
+        # if not hasattr(cls, "_sa_instance_state"):
+        #     manager = opt_manager_of_class(cls)
+        #     manager.setup_instance(cls, InstanceState(cls, manager))
         return cls.__sqltable_decoder__.decode_lines(buf)
 
 
@@ -214,8 +245,9 @@ class SQLTable(DeclarativeBaseNoMeta, MappedAsDataclass):
         if kw.pop("table", False):
             # Enable Table Creation
             cls.__abstract__ = False
-        
+
         super().__init_subclass__(**kw)
+        
         
         cls.__init_encoder__(cls, **kw)
        
@@ -223,3 +255,10 @@ class SQLTable(DeclarativeBaseNoMeta, MappedAsDataclass):
         
         if hasattr(cls, "__post_subclass__"):
             cls.__post_subclass__(cls, **kw)
+
+
+class AsyncSQLTable(AsyncAttrs, SQLTable):
+    """Implements AsyncAttrs into `SQLTable`"""
+    __abstract__ = True
+
+
