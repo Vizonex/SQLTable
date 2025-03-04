@@ -1,3 +1,5 @@
+
+from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -6,36 +8,28 @@ from typing import (
     List,
     Literal,
     Optional,
-    Protocol,
     Type,
-    TypeVar,
     Union,
     overload,
-    runtime_checkable,
     get_args,
-    Dict
 )
 
 from msgspec.json import Decoder as JsonDecoder
 from msgspec.json import Encoder as JsonEncoder
 from sqlalchemy.orm import (
     DeclarativeBaseNoMeta,
-    Mapped,
     MappedAsDataclass,
     Mapper,
     declared_attr,
-    configure_mappers
+    configure_mappers,
 )
 
-from sqlalchemy import Column, Table, PrimaryKeyConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm.instrumentation import opt_manager_of_class
 from sqlalchemy.orm.state import InstanceState
 from sqlalchemy.sql import FromClause
 from sqlalchemy.sql.base import _NoArg
 from typing_extensions import Buffer, Self
-
-
 
 
 # Some things were adopted/retained from SQLModel which include
@@ -52,26 +46,53 @@ class SQLTableDecoderMixin:
     if TYPE_CHECKING:
         __sqltable_decoder__: ClassVar[JsonDecoder[Self]]
         """Decodes Json Data into SQLTable Objects"""
-    
+
     @classmethod
     def remove_mapping_annotations(cls):
-        """Temporarly alters annotations so msgspec can understand 
+        """Temporarly alters annotations so msgspec can understand
         how to decode variables that are associated to `Mapped`"""
         __previous_annotations__ = cls.__annotations__.copy()
-        
+
         for k, v in __previous_annotations__.items():
-            # using type(v) would just give me _GenericAlias, this bypasses that...
+            # using type(v) would just give me _GenericAlias this bypasses that...
             if str(v).startswith("sqlalchemy.orm.base.Mapped"):
                 # Unwrap SQLAlchemy Mapped varaibles temporarly
                 # get_args comes from typing...
                 cls.__annotations__[k] = get_args(v)[0]
-        
+
         return __previous_annotations__
-    
+
     @classmethod
     def re_fix_annotations(cls, old_annotations):
         """Reverts back to Mapped[] annotations for objects defined with it."""
         cls.__annotations__ = old_annotations
+
+    @contextmanager
+    @classmethod
+    def temporarly_disable_mapped_annotations(cls):
+        """
+        Context Manager for helping create msgspec Decoders.
+        By hacking the `Mapped` annotations in/out it is possible to 
+        customize and add your own decoders to your SQLTable tables
+    
+        ::
+            
+            from msgspec.msgpack import Decoder as MsgpackDecoder
+
+            class _SQLDecoder(SQLTableDecoderMixin):
+                @classmethod
+                def setup_up_msgpack_encoder(cls):
+                    with cls.temporarly_disable_mapped_annotations():
+                        self.__msgpack_decoder__ = MsgpackDecoder(type=cls)
+        
+        
+        tip: you could wrap these custom functions you make using `__post_subclass__` for the best results...
+        """
+
+        old = cls.remove_mapping_annotations()
+        yield 
+        cls.re_fix_annotations(old)
+
 
     @classmethod
     def __init_decoder__(
@@ -83,20 +104,20 @@ class SQLTableDecoderMixin:
     ):
         """Initalizes the Sqltable decoder class"""
 
-        # Until Msgspec gets around to fixing decoding we have to trick 
+        # Until Msgspec gets around to fixing decoding we have to trick
         # it into thinking the items inside Mapped is our real variables we want to decode
         old_annotations = cls.remove_mapping_annotations()
         cls.__sqltable_decoder__ = JsonDecoder(
             type=cls, strict=dec_strict, dec_hook=dec_hook, float_hook=dec_float_hook
-        ) 
+        )
         # We're done playing trickery with msgspec so revert after were done building our decoder.
         cls.re_fix_annotations(old_annotations)
 
-        # We need to make sure the decoder 
+        # We need to make sure the decoder
         # knows what it's setting up...
-        
-        # TODO: make configure_mappers faster by setting 
-        # it up to do only one registry at a time? 
+
+        # TODO: make configure_mappers faster by setting
+        # it up to do only one registry at a time?
         configure_mappers()
         return None
 
@@ -123,14 +144,11 @@ class SQLTableDecoderMixin:
         # if not hasattr(cls, "_sa_instance_state"):
         manager = opt_manager_of_class(cls)
         manager.setup_instance(cls, InstanceState(cls, manager))
-        print(cls.__dict__)
-        print(cls.host.__set__)
-
         return cls.__sqltable_decoder__.decode(buf)
 
     @classmethod
     def decode_lines(cls, buf: Union[Buffer, str]) -> List[Self]:
-         # setup _sa_instance_state ahead of time so that
+        # setup _sa_instance_state ahead of time so that
         # unpickle events can access the object normally.
         # if not hasattr(cls, "_sa_instance_state"):
         #     manager = opt_manager_of_class(cls)
@@ -163,7 +181,6 @@ class SQLTable(DeclarativeBaseNoMeta, MappedAsDataclass):
         __dataclass_fields__: ClassVar[dict[str, Any]]
         """The Dataclass fields that are in the `SQLTable`"""
 
-        
     __abstract__ = True
 
     @declared_attr.directive
@@ -224,7 +241,7 @@ class SQLTable(DeclarativeBaseNoMeta, MappedAsDataclass):
             uuid_format=enc_uuid_format,
             order=enc_order,
         )
-    
+
     @property
     def encoder(self) -> JsonEncoder:
         """Helper for encoding SQLTable to json format"""
@@ -246,19 +263,18 @@ class SQLTable(DeclarativeBaseNoMeta, MappedAsDataclass):
             # Enable Table Creation
             cls.__abstract__ = False
 
-        super().__init_subclass__(**kw)
-        
-        
-        cls.__init_encoder__(cls, **kw)
-       
+        # Fix annotations to reflect the Real Sqlalchemy types...
 
-        
+        super().__init_subclass__(**kw)
+
+        cls.__init_encoder__(cls, **kw)
+
         if hasattr(cls, "__post_subclass__"):
             cls.__post_subclass__(cls, **kw)
 
 
 class AsyncSQLTable(AsyncAttrs, SQLTable):
     """Implements AsyncAttrs into `SQLTable`"""
-    __abstract__ = True
 
+    __abstract__ = True
 
