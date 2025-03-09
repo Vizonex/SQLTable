@@ -53,7 +53,7 @@ class ProxyTable(SQLTableDecoderMixin, SQLTable, table=True):
 
 The personality of the code from SQLModel Remains relatively the same but Mapped API is used instead as directed by the SQLAlchemy Dev's 
 recommendations. Json Enocders are built in but you could also add in the `SQLTableDecoderMixin` If you plan to webscrape 
-an ajax api of some sort in your project. However just know that some setup may not work because it requires the json to be directly decoded 
+an ajax api of some sort in your project. However just know that some setups may not work because it requires the json to be directly decoded 
 because otherwise the _sa_instance_state variable that is made will not load properly when you go to dump items into your database...
 
 ```python
