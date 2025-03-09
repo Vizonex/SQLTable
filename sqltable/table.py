@@ -35,20 +35,6 @@ from typing_extensions import Buffer, Self
 # Some things were adopted from Msgspec
 # - added JsonEncoder/JsonDecoders to SQLTable for Right-Away serlization
 
-# class Interceptor:
-#     def __setattr__(cls, key: str, value: Any) -> None:
-#         print((key, value))
-#         if "__mapper__" in cls.__dict__:
-#             _add_attribute(cls, key, value)
-#         else:
-#             type.__setattr__(cls, key, value)
-
-#     def __delattr__(cls, key: str) -> None:
-#         if "__mapper__" in cls.__dict__:
-#             _del_attribute(cls, key)
-#         else:
-#             type.__delattr__(cls, key)
-
 
 class SQLTableDecoderMixin:
     """Special Json Decoder for SQLTable types"""
