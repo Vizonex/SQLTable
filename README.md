@@ -40,21 +40,21 @@ and binds them all together
 ```python
 from sqltable import SQLTable
 from sqltable.orm import Mapped, mapped_column
+from sqlalchemy import create_engine, Integer, String, Enum as EnumType
 from python_socks import ProxyType
 
-
-class ProxyTable(SQLTable, table=True):    
+class ProxyTable(SQLTableDecoderMixin, SQLTable, table=True):    
     host:Mapped[str]
     port:Mapped[int]
-    type:Mapped[ProxyType] = ProxyType.HTTP
-    id:Mapped[int] = mapped_column(primary_key=True, default=None)
-
+    type:Mapped[ProxyType] = mapped_column(EnumType(ProxyType), default=ProxyType.HTTP)
+    id:Mapped[int] = mapped_column(Integer, primary_key=True, default=None)
 
 ```
 
-The personality of the code from SQLModel Remains the same but Mapped API is used instead as directed by the SQLAlchemy Dev's 
+The personality of the code from SQLModel Remains relatively the same but Mapped API is used instead as directed by the SQLAlchemy Dev's 
 recommendations. Json Enocders are built in but you could also add in the `SQLTableDecoderMixin` If you plan to webscrape 
-an ajax api of some sort in your project.
+an ajax api of some sort in your project. However just know that some setup may not work because it requires the json to be directly decoded 
+because otherwise the _sa_instance_state variable that is made will not load properly when you go to dump items into your database...
 
 ```python
 from sqltable import SQLTable, SQLTableDecoderMixin
@@ -75,11 +75,14 @@ print(proxy.encode())
 print(ProxyTable.decode(b'{"host":"127.0.0.1","port":9150,"type":2,"id":null}'))
 ```
  
-
-
-
-
-
+# TODOS
+- [ ] Pypi Release, We're extremely close to `0.0.1` maybe within the next few days. Depends on how fast I can code.
+- [ ] Test Suite
+- [ ] Splitting out the SQLTableDecoderMixin with more subclasses and special hook for different classes and different decoders to combine that msgspec provides
+- [ ] Maybe a custom URL Variable using `msgspec.Struct` as an experimental feature? 
+- [ ] A Class called `IDTable` & `AsyncIDTable` to bind an `id` with an Integer or NULL to the final column of every class Variable this may or may not be typehinted on the dataclass transformation
+- [x] AsyncTable
+- [x] SQLTable Base
 
 
 
