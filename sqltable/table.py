@@ -1,4 +1,4 @@
-
+from __future__ import annotations
 from contextlib import contextmanager
 from typing import (
     TYPE_CHECKING,
@@ -10,27 +10,23 @@ from typing import (
     Optional,
     Type,
     Union,
-    overload,
     get_args,
+    overload,
 )
 
 from msgspec.json import Decoder as JsonDecoder
 from msgspec.json import Encoder as JsonEncoder
+from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import (
     DeclarativeBaseNoMeta,
     MappedAsDataclass,
     Mapper,
     declared_attr,
-    configure_mappers,
 )
-
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm.instrumentation import opt_manager_of_class
 from sqlalchemy.orm.state import InstanceState
 from sqlalchemy.sql import FromClause
 from sqlalchemy.sql.base import _NoArg
 from typing_extensions import Buffer, Self
-
 
 # Some things were adopted/retained from SQLModel which include
 # - __init_subclass__ table keyword to enable or disable an abstract able
@@ -39,6 +35,20 @@ from typing_extensions import Buffer, Self
 # Some things were adopted from Msgspec
 # - added JsonEncoder/JsonDecoders to SQLTable for Right-Away serlization
 
+# class Interceptor:
+#     def __setattr__(cls, key: str, value: Any) -> None:
+#         print((key, value))
+#         if "__mapper__" in cls.__dict__:
+#             _add_attribute(cls, key, value)
+#         else:
+#             type.__setattr__(cls, key, value)
+
+#     def __delattr__(cls, key: str) -> None:
+#         if "__mapper__" in cls.__dict__:
+#             _del_attribute(cls, key)
+#         else:
+#             type.__delattr__(cls, key)
+
 
 class SQLTableDecoderMixin:
     """Special Json Decoder for SQLTable types"""
@@ -46,6 +56,7 @@ class SQLTableDecoderMixin:
     if TYPE_CHECKING:
         __sqltable_decoder__: ClassVar[JsonDecoder[Self]]
         """Decodes Json Data into SQLTable Objects"""
+        _sa_instance_state: ClassVar[InstanceState[Self]]
 
     @classmethod
     def remove_mapping_annotations(cls):
@@ -63,36 +74,31 @@ class SQLTableDecoderMixin:
         return __previous_annotations__
 
     @classmethod
-    def re_fix_annotations(cls, old_annotations):
-        """Reverts back to Mapped[] annotations for objects defined with it."""
-        cls.__annotations__ = old_annotations
-
     @contextmanager
-    @classmethod
     def temporarly_disable_mapped_annotations(cls):
         """
         Context Manager for helping create msgspec Decoders.
-        By hacking the `Mapped` annotations in/out it is possible to 
-        customize and add your own decoders to your SQLTable tables
-    
+        By hacking the `Mapped` annotations in/out, it is possible to
+        customize and add your own decoders into your SQLTable tables
+
         ::
-            
+
             from msgspec.msgpack import Decoder as MsgpackDecoder
 
-            class _SQLDecoder(SQLTableDecoderMixin):
+            class SQLMsgpackDecoder(SQLTableDecoderMixin):
                 @classmethod
                 def setup_up_msgpack_encoder(cls):
                     with cls.temporarly_disable_mapped_annotations():
                         self.__msgpack_decoder__ = MsgpackDecoder(type=cls)
-        
-        
+
+
         tip: you could wrap these custom functions you make using `__post_subclass__` for the best results...
         """
 
         old = cls.remove_mapping_annotations()
-        yield 
-        cls.re_fix_annotations(old)
-
+        yield
+        # We're done playing trickery with msgspec so revert after were done building our decoder.
+        cls.__annotations__ = old
 
     @classmethod
     def __init_decoder__(
@@ -106,19 +112,16 @@ class SQLTableDecoderMixin:
 
         # Until Msgspec gets around to fixing decoding we have to trick
         # it into thinking the items inside Mapped is our real variables we want to decode
-        old_annotations = cls.remove_mapping_annotations()
-        cls.__sqltable_decoder__ = JsonDecoder(
-            type=cls, strict=dec_strict, dec_hook=dec_hook, float_hook=dec_float_hook
-        )
-        # We're done playing trickery with msgspec so revert after were done building our decoder.
-        cls.re_fix_annotations(old_annotations)
+        # # configure_mappers()
 
-        # We need to make sure the decoder
-        # knows what it's setting up...
+        with cls.temporarly_disable_mapped_annotations():
+            cls.__sqltable_decoder__ = JsonDecoder(
+                type=cls,
+                strict=dec_strict,
+                dec_hook=dec_hook,
+                float_hook=dec_float_hook,
+            )
 
-        # TODO: make configure_mappers faster by setting
-        # it up to do only one registry at a time?
-        configure_mappers()
         return None
 
     def __init_subclass__(
@@ -135,25 +138,27 @@ class SQLTableDecoderMixin:
         :param kw: Other custom external keywords to use in your own abstract base...
         """
         super().__init_subclass__(**kw)
-        cls.__init_decoder__(dec_strict, dec_hook, dec_float_hook, **kw)
 
     @classmethod
     def decode(cls, buf: Union[Buffer, str]) -> Self:
         # setup _sa_instance_state ahead of time so that
         # unpickle events can access the object normally.
-        # if not hasattr(cls, "_sa_instance_state"):
-        manager = opt_manager_of_class(cls)
-        manager.setup_instance(cls, InstanceState(cls, manager))
-        return cls.__sqltable_decoder__.decode(buf)
+        # By looking into SQLModel's validable function it is possible
+        # to figure out what we need to do to retain any if not all of
+        # SQLTable's attributes...
+        # Otherwise we will be missing a _sa_instance_state if not done...
+        old_dict = cls.__dict__.copy()
+        m = cls.__sqltable_decoder__.decode(buf)
+        object.__setattr__(m, "__dict__", {**old_dict, **m.__dict__})
+        return m
 
     @classmethod
     def decode_lines(cls, buf: Union[Buffer, str]) -> List[Self]:
-        # setup _sa_instance_state ahead of time so that
-        # unpickle events can access the object normally.
-        # if not hasattr(cls, "_sa_instance_state"):
-        #     manager = opt_manager_of_class(cls)
-        #     manager.setup_instance(cls, InstanceState(cls, manager))
-        return cls.__sqltable_decoder__.decode_lines(buf)
+        old_dict = cls.__dict__.copy()
+        items = cls.__sqltable_decoder__.decode_lines(buf)
+        for i in items:
+            object.__setattr__(i, "__dict__", {**old_dict, **i.__dict__})
+        return items
 
 
 # NOTE: dataclasses are used to enable triggering msgspec into reconizing dataclass fields
@@ -263,7 +268,10 @@ class SQLTable(DeclarativeBaseNoMeta, MappedAsDataclass):
             # Enable Table Creation
             cls.__abstract__ = False
 
-        # Fix annotations to reflect the Real Sqlalchemy types...
+        # Decoder must be initalized first overwise what happens is that the instremented attributes
+        # Screw us over...
+        if hasattr(cls, "__init_decoder__"):
+            cls.__init_decoder__(**kw)
 
         super().__init_subclass__(**kw)
 
